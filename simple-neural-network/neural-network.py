@@ -1,22 +1,26 @@
-# coding:utf-8
 import random
 import math
 
-
-# refs: http://www.cnblogs.com/charlotte77/p/5629865.html
-
 #
-#   参数解释：
-#   "pd_" ：偏导的前缀
-#   "d_" ：导数的前缀
-#   "w_ho" ：隐含层到输出层的权重系数索引
-#   "w_ih" ：输入层到隐含层的权重系数的索引
+# Shorthand:
+#   "pd_" as a variable prefix means "partial derivative"
+#   "d_" as a variable prefix means "derivative"
+#   "_wrt_" is shorthand for "with respect to"
+#   "w_ho" and "w_ih" are the index of weights from hidden to output layer neurons and input to hidden layer neurons respectively
+#
+# Comment references:
+#
+# [1] Wikipedia article on Backpropagation
+#   http://en.wikipedia.org/wiki/Backpropagation#Finding_the_derivative_of_the_error
+# [2] Neural Networks for Machine Learning course on Coursera by Geoffrey Hinton
+#   https://class.coursera.org/neuralnets-2012-001/lecture/39
+# [3] The Back Propagation Algorithm
+#   https://www4.rgu.ac.uk/files/chapter3%20-%20bp.pdf
 
 class NeuralNetwork:
     LEARNING_RATE = 0.5
 
-    def __init__(self, num_inputs, num_hidden, num_outputs, hidden_layer_weights=None, hidden_layer_bias=None,
-                 output_layer_weights=None, output_layer_bias=None):
+    def __init__(self, num_inputs, num_hidden, num_outputs, hidden_layer_weights = None, hidden_layer_bias = None, output_layer_weights = None, output_layer_bias = None):
         self.num_inputs = num_inputs
 
         self.hidden_layer = NeuronLayer(num_hidden, hidden_layer_bias)
@@ -57,56 +61,49 @@ class NeuralNetwork:
         print('------')
 
     def feed_forward(self, inputs):
-        """
-        因为这里的network网络结构是固定的，一个hidden layer和一个output layer，所以可以这么写，
-        如果是多层的话，就需要多个feed_forward了。正常的话这里是对所有layer的循环
-        :param inputs:
-        :return:
-        """
         hidden_layer_outputs = self.hidden_layer.feed_forward(inputs)
         return self.output_layer.feed_forward(hidden_layer_outputs)
 
+    # Uses online learning, ie updating the weights after each training case
     def train(self, training_inputs, training_outputs):
         self.feed_forward(training_inputs)
 
-        # 1. 输出神经元的deltas，并保存，计算前面layer的delta和update parameter的时候需要用到
+        # 1. Output neuron deltas
         pd_errors_wrt_output_neuron_total_net_input = [0] * len(self.output_layer.neurons)
         for o in range(len(self.output_layer.neurons)):
-            # ∂E/∂zⱼ
-            pd_errors_wrt_output_neuron_total_net_input[o] = self.output_layer.neurons[
-                o].calculate_pd_error_wrt_total_net_input(training_outputs[o])
 
-        # 2. 隐含层神经元的deltas并保存
+            # ∂E/∂zⱼ
+            pd_errors_wrt_output_neuron_total_net_input[o] = self.output_layer.neurons[o].calculate_pd_error_wrt_total_net_input(training_outputs[o])
+
+        # 2. Hidden neuron deltas
         pd_errors_wrt_hidden_neuron_total_net_input = [0] * len(self.hidden_layer.neurons)
         for h in range(len(self.hidden_layer.neurons)):
 
+            # We need to calculate the derivative of the error with respect to the output of each hidden layer neuron
             # dE/dyⱼ = Σ ∂E/∂zⱼ * ∂z/∂yⱼ = Σ ∂E/∂zⱼ * wᵢⱼ
             d_error_wrt_hidden_neuron_output = 0
             for o in range(len(self.output_layer.neurons)):
-                d_error_wrt_hidden_neuron_output += pd_errors_wrt_output_neuron_total_net_input[o] * \
-                                                    self.output_layer.neurons[o].weights[h]
+                d_error_wrt_hidden_neuron_output += pd_errors_wrt_output_neuron_total_net_input[o] * self.output_layer.neurons[o].weights[h]
 
             # ∂E/∂zⱼ = dE/dyⱼ * ∂zⱼ/∂
-            pd_errors_wrt_hidden_neuron_total_net_input[h] = d_error_wrt_hidden_neuron_output * \
-                                                             self.hidden_layer.neurons[
-                                                                 h].calculate_pd_total_net_input_wrt_input()
+            pd_errors_wrt_hidden_neuron_total_net_input[h] = d_error_wrt_hidden_neuron_output * self.hidden_layer.neurons[h].calculate_pd_total_net_input_wrt_input()
 
-        # 3. 更新输出层权重系数
+        # 3. Update output neuron weights
         for o in range(len(self.output_layer.neurons)):
             for w_ho in range(len(self.output_layer.neurons[o].weights)):
+
                 # ∂Eⱼ/∂wᵢⱼ = ∂E/∂zⱼ * ∂zⱼ/∂wᵢⱼ
-                pd_error_wrt_weight = pd_errors_wrt_output_neuron_total_net_input[o] * self.output_layer.neurons[
-                    o].calculate_pd_total_net_input_wrt_weight(w_ho)
+                pd_error_wrt_weight = pd_errors_wrt_output_neuron_total_net_input[o] * self.output_layer.neurons[o].calculate_pd_total_net_input_wrt_weight(w_ho)
 
                 # Δw = α * ∂Eⱼ/∂wᵢ
                 self.output_layer.neurons[o].weights[w_ho] -= self.LEARNING_RATE * pd_error_wrt_weight
 
-        # 4. 更新隐含层的权重系数
+        # 4. Update hidden neuron weights
         for h in range(len(self.hidden_layer.neurons)):
             for w_ih in range(len(self.hidden_layer.neurons[h].weights)):
+
                 # ∂Eⱼ/∂wᵢ = ∂E/∂zⱼ * ∂zⱼ/∂wᵢ
-                pd_error_wrt_weight = pd_errors_wrt_hidden_neuron_total_net_input[h] * self.hidden_layer.neurons[
-                    h].calculate_pd_total_net_input_wrt_weight(w_ih)
+                pd_error_wrt_weight = pd_errors_wrt_hidden_neuron_total_net_input[h] * self.hidden_layer.neurons[h].calculate_pd_total_net_input_wrt_weight(w_ih)
 
                 # Δw = α * ∂Eⱼ/∂wᵢ
                 self.hidden_layer.neurons[h].weights[w_ih] -= self.LEARNING_RATE * pd_error_wrt_weight
@@ -120,16 +117,10 @@ class NeuralNetwork:
                 total_error += self.output_layer.neurons[o].calculate_error(training_outputs[o])
         return total_error
 
-
 class NeuronLayer:
     def __init__(self, num_neurons, bias):
-        """
-        NeuronLayer负责保存每一层的Neuron，实际上具体的计算发生在Neuron中。
-        :param num_neurons:
-        :param bias:
-        """
 
-        # 同一层的神经元共享一个截距项b
+        # Every neuron in a layer shares the same bias
         self.bias = bias if bias else random.random()
 
         self.neurons = []
@@ -145,43 +136,23 @@ class NeuronLayer:
             print('  Bias:', self.bias)
 
     def feed_forward(self, inputs):
-        """
-        每一层，有几个Neuron就有几个outputs
-        inputs由上一层的Neuron个数决定。
-        每个 Neuron都保存了上一层的所有输出作为自己的inputs，要和自己的weights点乘
-        :param inputs:
-        :return: outputs
-        """
         outputs = []
         for neuron in self.neurons:
             outputs.append(neuron.calculate_output(inputs))
         return outputs
 
     def get_outputs(self):
-        """
-        每一层的outputs实际上是下一层每个Neuron的inputs
-        :return:
-        """
         outputs = []
         for neuron in self.neurons:
             outputs.append(neuron.output)
         return outputs
 
-
 class Neuron:
     def __init__(self, bias):
-        # bias是连接到自己这个边上的bias
         self.bias = bias
-        # 每个Neuron保存连接到自己上的边的weight
         self.weights = []
 
     def calculate_output(self, inputs):
-        """
-        每次feed_forward都需要调用该函数计算并保存当前的inputs和output
-        output在计算梯度的时候需要用到
-        :param inputs:
-        :return:
-        """
         self.inputs = inputs
         self.output = self.squash(self.calculate_total_net_input())
         return self.output
@@ -192,51 +163,77 @@ class Neuron:
             total += self.inputs[i] * self.weights[i]
         return total + self.bias
 
-    # 激活函数sigmoid
+    # Apply the logistic function to squash the output of the neuron
+    # The result is sometimes referred to as 'net' [2] or 'net' [1]
     def squash(self, total_net_input):
         return 1 / (1 + math.exp(-total_net_input))
 
-    # 每一个神经元的误差是由均方差公式计算的，这个公式并不参与反向传播，但是需要这个公式来知道偏导数怎么求，
+    # Determine how much the neuron's total input has to change to move closer to the expected output
+    #
+    # Now that we have the partial derivative of the error with respect to the output (∂E/∂yⱼ) and
+    # the derivative of the output with respect to the total net input (dyⱼ/dzⱼ) we can calculate
+    # the partial derivative of the error with respect to the total net input.
+    # This value is also known as the delta (δ) [1]
+    # δ = ∂E/∂zⱼ = ∂E/∂yⱼ * dyⱼ/dzⱼ
+    #
+    def calculate_pd_error_wrt_total_net_input(self, target_output):
+        return self.calculate_pd_error_wrt_output(target_output) * self.calculate_pd_total_net_input_wrt_input();
+
+    # The error for each neuron is calculated by the Mean Square Error method:
     def calculate_error(self, target_output):
         return 0.5 * (target_output - self.output) ** 2
 
-    # 输出神经元的delta，因为有cost function的影响，所以输出层的梯度计算和其他层都不太一样，需要考虑cost function的样子
-    def calculate_pd_error_wrt_total_net_input(self, target_output):
-        return self.calculate_pd_error_wrt_output(target_output) * self.calculate_pd_total_net_input_wrt_input()
-
-    # 均方差公式(本示例的cost function)的导数
+    # The partial derivate of the error with respect to actual output then is calculated by:
+    # = 2 * 0.5 * (target output - actual output) ^ (2 - 1) * -1
+    # = -(target output - actual output)
+    #
+    # The Wikipedia article on backpropagation [1] simplifies to the following, but most other learning material does not [2]
+    # = actual output - target output
+    #
+    # Alternative, you can use (target - output), but then need to add it during backpropagation [3]
+    #
+    # Note that the actual output of the output neuron is often written as yⱼ and target output as tⱼ so:
+    # = ∂E/∂yⱼ = -(tⱼ - yⱼ)
     def calculate_pd_error_wrt_output(self, target_output):
         return -(target_output - self.output)
 
-    # sigmoid输出对sigmoid输入的偏导
+    # The total net input into the neuron is squashed using logistic function to calculate the neuron's output:
+    # yⱼ = φ = 1 / (1 + e^(-zⱼ))
+    # Note that where ⱼ represents the output of the neurons in whatever layer we're looking at and ᵢ represents the layer below it
+    #
+    # The derivative (not partial derivative since there is only one variable) of the output then is:
+    # dyⱼ/dzⱼ = yⱼ * (1 - yⱼ)
     def calculate_pd_total_net_input_wrt_input(self):
         return self.output * (1 - self.output)
 
-    # 权重计算公式的导数，对系数求偏导，系数的参数是input的值，update参数的时候用到
+    # The total net input is the weighted sum of all the inputs to the neuron and their respective weights:
+    # = zⱼ = netⱼ = x₁w₁ + x₂w₂ ...
+    #
+    # The partial derivative of the total net input with respective to a given weight (with everything else held constant) then is:
+    # = ∂zⱼ/∂wᵢ = some constant + 1 * xᵢw₁^(1-0) + some constant ... = xᵢ
     def calculate_pd_total_net_input_wrt_weight(self, index):
         return self.inputs[index]
 
+###
 
-# 文中的例子:
+# Blog post example:
 
-nn = NeuralNetwork(2, 2, 2, hidden_layer_weights=[0.15, 0.2, 0.25, 0.3], hidden_layer_bias=0.35,
-                   output_layer_weights=[0.4, 0.45, 0.5, 0.55], output_layer_bias=0.6)
+nn = NeuralNetwork(2, 2, 2, hidden_layer_weights=[0.15, 0.2, 0.25, 0.3], hidden_layer_bias=0.35, output_layer_weights=[0.4, 0.45, 0.5, 0.55], output_layer_bias=0.6)
 for i in range(10000):
-    nn.train([0.05, 0.1], [0.01, 0.09])
-    print(i, round(nn.calculate_total_error([[[0.05, 0.1], [0.01, 0.09]]]), 9))
+    nn.train([0.05, 0.1], [0.01, 0.99])
+    print(i, round(nn.calculate_total_error([[[0.05, 0.1], [0.01, 0.99]]]), 9))
 
+# XOR example:
 
-    # 另外一个例子，可以把上面的例子注释掉再运行一下:
+# training_sets = [
+#     [[0, 0], [0]],
+#     [[0, 1], [1]],
+#     [[1, 0], [1]],
+#     [[1, 1], [0]]
+# ]
 
-    # training_sets = [
-    #     [[0, 0], [0]],
-    #     [[0, 1], [1]],
-    #     [[1, 0], [1]],
-    #     [[1, 1], [0]]
-    # ]
-
-    # nn = NeuralNetwork(len(training_sets[0][0]), 5, len(training_sets[0][1]))
-    # for i in range(10000):
-    #     training_inputs, training_outputs = random.choice(training_sets)
-    #     nn.train(training_inputs, training_outputs)
-    #     print(i, nn.calculate_total_error(training_sets))
+# nn = NeuralNetwork(len(training_sets[0][0]), 5, len(training_sets[0][1]))
+# for i in range(10000):
+#     training_inputs, training_outputs = random.choice(training_sets)
+#     nn.train(training_inputs, training_outputs)
+#     print(i, nn.calculate_total_error(training_sets))
